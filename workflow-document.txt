@@ -1,0 +1,195 @@
+# StaffSync Pro - Application Workflow Document
+
+This document details the end-to-end user journeys and system processes for the StaffSync Pro web application built on Firebase.
+
+---
+
+## 1. User Authentication Workflows
+
+### 1.1. HR User Login
+
+*   **Trigger:** HR Manager navigates to the `/hr/login` page.
+*   **User Actions:**
+    1.  Enters their email address and password.
+    2.  Clicks the "Login" button.
+*   **System Responses/Interactions:**
+    1.  **Firebase Auth:** The `signInWithEmailAndPassword` method is called to verify the user's credentials.
+    2.  **Firestore:** Upon successful authentication, the `getOrCreateHrUser` function is invoked. It checks for an existing HR user document in the `hr_users` collection. If one doesn't exist, it creates one.
+*   **Data Flow:**
+    *   **Request:** User's email and password.
+    *   **Response:** Firebase Auth user object.
+*   **Screens/UI Changes:**
+    1.  A loading indicator is shown on the "Login" button.
+    2.  Upon success, the user is redirected to the `/hr/dashboard`.
+*   **Success/Failure Outcomes:**
+    *   **Success:** User is logged in and can access the HR dashboard.
+    *   **Failure:** An error toast message is displayed (e.g., "Incorrect credentials. Please try again."). The user remains on the login page.
+
+### 1.2. Employee Registration (Two-Phase)
+
+#### Phase 1: HR Pre-Registration
+
+*   **Trigger:** HR Manager navigates to the "Register Employee" page from the HR dashboard.
+*   **User Actions:**
+    1.  Fills in the new employee's full name, email address, and monthly salary.
+    2.  Clicks the "Generate Registration QR" button.
+*   **System Responses/Interactions:**
+    1.  **Firestore:** A new document is created in the `employees` collection with the provided details, a default status of "Checked Out", and a role of "Employee".
+    2.  **QR Code Service:** An API call is made to `api.qrserver.com` to generate a QR code. The QR code encodes a URL pointing to the application's employee registration page, with the employee's email as a URL parameter (e.g., `.../employee/register?email=new.employee@example.com`).
+*   **Data Flow:**
+    *   **Request:** Employee name, email, salary.
+    *   **Response:** A new employee document is created. A QR code image URL is returned to the client.
+*   **Screens/UI Changes:**
+    1.  A loading state is shown on the button.
+    2.  A dialog box appears displaying the name of the new employee and the generated QR code.
+    3.  The input form is cleared.
+*   **Success/Failure Outcomes:**
+    *   **Success:** Employee is pre-registered. A toast notification confirms success. HR can now show the QR code to the new employee.
+    *   **Failure:** A toast notification appears indicating the registration failed.
+
+#### Phase 2: Employee Completes Registration
+
+*   **Trigger:** New employee scans the QR code provided by HR and opens the link in their browser.
+*   **User Actions:**
+    1.  The employee sees their email address is pre-filled and disabled.
+    2.  They enter a password for their account.
+    3.  They confirm the password.
+    4.  They click the "Register" button.
+*   **System Responses/Interactions:**
+    1.  **Firestore:** The system first checks if an employee document with the given email exists.
+    2.  **Firebase Auth:** If the employee exists in Firestore, `createUserWithEmailAndPassword` is called to create a new user in Firebase Authentication.
+*   **Data Flow:**
+    *   **Request:** Employee email, password.
+    *   **Response:** A new user account is created in Firebase Auth, linked to the pre-registered Firestore document.
+*   **Screens/UI Changes:**
+    1.  A loading state is shown on the "Register" button.
+    2.  Upon success, the user is redirected to the `/employee/login` page.
+*   **Success/Failure Outcomes:**
+    *   **Success:** A toast message confirms successful registration. User can now log in.
+    *   **Failure:** An error toast appears if passwords don't match, the email was not pre-registered by HR, or another Firebase Auth error occurs.
+
+### 1.3. Employee Login
+
+*   **Trigger:** Employee navigates to the `/employee/login` page.
+*   **User Actions:**
+    1.  Enters their email and password.
+    2.  Clicks the "Login" button.
+*   **System Responses/Interactions:**
+    1.  **Firebase Auth:** The `signInWithEmailAndPassword` method validates the credentials.
+    2.  **Firestore:** The `getEmployeeByEmail` function is called to retrieve the corresponding employee document from the `employees` collection.
+    3.  **Local Storage:** The employee's Firestore document ID is saved to local storage to maintain the session.
+*   **Data Flow:**
+    *   **Request:** Email and password.
+    *   **Response:** Firebase Auth user object, employee data from Firestore.
+*   **Screens/UI Changes:**
+    1.  A loading state is shown on the button.
+    2.  On success, the user is redirected to the `/employee/dashboard`.
+*   **Success/Failure Outcomes:**
+    *   **Success:** User is logged in and can access their personal dashboard.
+    *   **Failure:** An error toast is displayed. User remains on the login page.
+
+---
+
+## 2. Core Application Workflows
+
+### 2.1. Employee Check-in / Check-out
+
+*   **Trigger:** Employee clicks the "Check In" or "Check Out" button on their dashboard.
+*   **User Actions:** Click the button.
+*   **System Responses/Interactions:**
+    1.  **Firestore:** The `updateEmployee` function is called. It updates the `status` field of the employee's document to "Checked In" or "Checked Out" and updates the `lastActivity` field to the current timestamp.
+*   **Data Flow:**
+    *   **Request:** The new status ("Checked In" or "Checked Out").
+    *   **Response:** The employee document in Firestore is updated.
+*   **Screens/UI Changes:**
+    1.  The status text on the dashboard immediately updates (e.g., "You are Checked In").
+    2.  The button text changes to the next logical action (e.g., "Check Out").
+    3.  The corresponding icon changes.
+    4.  The HR dashboard's "Live Employee Status" table reflects this change in real-time.
+*   **Success/Failure Outcomes:**
+    *   **Success:** A toast message confirms the status update. The UI reflects the new status.
+    *   **Failure:** An error would be logged, but the UI might not update. This is unlikely unless there's a database connection issue.
+
+### 2.2. HR Creates and Assigns a Task
+
+*   **Trigger:** HR clicks the "New Task" button in the "Work Management" section of the dashboard.
+*   **User Actions:**
+    1.  A dialog appears. HR selects whether it's a "General" or "CRM" task.
+    2.  Fills in the task title and description.
+    3.  Selects an employee from a dropdown list to assign the task to.
+    4.  (If CRM) Selects a lead from a dropdown and adds specific instructions.
+    5.  Clicks "Create Task".
+*   **System Responses/Interactions:**
+    1.  **Firestore:** The `addTask` function creates a new document in the `tasks` collection with all the provided details.
+    2.  **Firestore:** The `addNotification` function creates a document in the `notifications` collection for the assigned employee.
+    3.  **API Route (`/api/send-email`):** A `fetch` request is made to this endpoint, which uses the Resend service to send an email notification to the employee.
+*   **Data Flow:**
+    *   **Request:** Task details (title, description, assigned employee ID, etc.).
+    *   **Response:** A new task document and a new notification document are created. The email API returns a success or failure message.
+*   **Screens/UI Changes:**
+    1.  The "New Task" dialog closes.
+    2.  The task list in the HR dashboard updates to show the new task under the assigned employee.
+    3.  The assigned employee will see a new notification icon and the task will appear in their "My Tasks" list.
+*   **Success/Failure Outcomes:**
+    *   **Success:** A toast confirms task creation. The employee is notified via the app and by email.
+    *   **Failure:** An error toast is shown. The task is not created.
+
+### 2.3. Employee Updates a Task
+
+*   **Trigger:** Employee clicks on a task in their "My Tasks" list.
+*   **User Actions:**
+    1.  A dialog opens with task details.
+    2.  Employee adds remarks.
+    3.  (If CRM) Employee updates the lead's status, last remark, and next follow-up date.
+    4.  Employee changes the task status to "In Progress" or "Completed".
+    5.  Clicks "Submit".
+*   **System Responses/Interactions:**
+    1.  **Firestore:** The `updateTask` function updates the task document with the new status and remarks.
+    2.  **Firestore:** (If CRM) The `updateLead` function updates the corresponding lead document in the `leads` collection.
+    3.  **Firestore:** (If task completed) The `addNotification` function creates a notification for the HR user.
+*   **Data Flow:**
+    *   **Request:** Updated task and lead data.
+    *   **Response:** The corresponding documents in Firestore are updated.
+*   **Screens/UI Changes:**
+    1.  The dialog closes.
+    2.  The task in the employee's list now shows as "Completed" and is visually distinct (e.g., grayed out).
+    3.  The HR dashboard reflects the updated task status in real-time.
+*   **Success/Failure Outcomes:**
+    *   **Success:** A toast confirms the update. The UI is updated for both the employee and HR.
+    *   **Failure:** An error toast is shown.
+
+### 2.4. Employee Leave Request & HR Approval
+
+*   **Trigger (Request):** Employee selects a date and provides a reason in the "Request Leave" section of their dashboard and clicks "Submit Request".
+*   **User Actions (Request):** Select date, enter reason, click submit.
+*   **System Responses (Request):**
+    1.  **Firestore:** `addLeaveRequest` creates a new document in `leaveRequests` with a status of "Pending".
+    2.  **Firestore:** `addNotification` creates a notification for the HR user.
+*   **Screens/UI Changes (Request):**
+    1.  The new request appears in the employee's "Leave History" with a "Pending" badge.
+    2.  The HR dashboard shows the new request in the "Leave Requests" section.
+*   **Trigger (Approval):** HR views the pending leave request on their dashboard.
+*   **User Actions (Approval):** HR clicks the "Approve" (check) or "Reject" (X) button.
+*   **System Responses (Approval):**
+    1.  **Firestore:** `updateLeaveRequest` changes the status of the leave request document to "Approved" or "Rejected".
+    2.  **Firestore:** `addNotification` creates a notification for the employee informing them of the decision.
+*   **Screens/UI Changes (Approval):**
+    1.  The request is removed from the HR's pending list.
+    2.  The employee's "Leave History" updates to show the "Approved" or "Rejected" badge.
+*   **Success/Failure Outcomes:**
+    *   **Success:** The leave request is processed and both parties are notified within the app.
+    *   **Failure:** The request status is not updated.
+
+---
+
+## 3. Error Handling and Edge Cases
+
+*   **Invalid Input:** Forms have client-side validation (`required` fields). If invalid data is submitted, HTML5 validation messages appear or toast notifications are used for more complex cases (e.g., passwords not matching).
+*   **Network Issues:** Firebase's client SDKs handle temporary network issues gracefully with automatic retries. If the connection is lost for an extended period, data will not sync, and actions will fail once the operation times out. The application relies on toasts to report failures in data submission.
+*   **Unauthorized Access:**
+    *   Page access is protected by the `AuthProvider` and layout files. If a non-authenticated user tries to access a protected dashboard (`/hr/dashboard` or `/employee/dashboard`), they are redirected to the appropriate login page.
+    *   If an authenticated employee tries to access the HR dashboard, the `getOrCreateHrUser` logic will fail to find a valid HR record, and they will be logged out and redirected.
+*   **Edge Cases:**
+    *   **Employee Deletion:** Deleting an employee is a complex action handled by a secure API route (`/api/delete-employee`). This backend function deletes the employee's Firestore document and all associated data (tasks, leave requests, notifications) in a single batch operation to ensure data integrity.
+    *   **QR Code Link without Pre-registration:** If a user gets a registration link but their email is not in the `employees` collection, the registration process will fail with a specific error message: "This email has not been pre-registered by HR."
+    *   **Multiple Tabs:** Firestore persistence is enabled for offline data access, but it can only be active in one tab. If multiple tabs are open, a warning is logged to the console, and persistence may only work in the first tab opened.
